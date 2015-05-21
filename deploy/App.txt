@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kanban Team Summary</title>
+    <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Wed May 20 2015 17:58:35 GMT-0700 (PDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Wed May 20 2015 17:58:35 GMT-0700 (PDT)";
+        var CHECKSUM = 7057699474;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Ext.Component',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+     title: "Build Information",
+    
+    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>i</div>",
+
+    initComponent: function() {
+        this.callParent(arguments);
+       
+    },
+    
+    onRender: function() {
+        this.callParent(arguments);
+        this.mon(this.el,'click',this.onClick,this);
+    },
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    _checkChecksum: function(container) {
+        var me = this;
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        if ( me.dialog ) {
+                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
+                        }
+                    }
+                }
+            }
+        });
+    },
+    onClick: function(e) {
+        var me = this;
+        this._checkChecksum(this);
+        
+        var dialog_items = [];
+        
+        if ( this.informationHtml ) {
+            dialog_items.push({
+                xtype:'container',
+                html: this.informationHtml
+            });
+        }
+                
+        dialog_items.push({
+            xtype:'container',
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            dialog_items.push({
+                xtype:'container',
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+        
+        if (this.dialog){this.dialog.destroy();}
+        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
+            defaults: { padding: 5, margin: 5 },
+            closable: true,
+            draggable: true,
+            title: me.title,
+            items: dialog_items
+        });
+        this.dialog.show();
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+
+Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
+
+    historicalSnapshots: null,
+    currentRecords: null,
+    statePrecedence: null,
+    completedStateValue: null,
+    stateFieldName: null,
+    previousValuesStateFieldName: null,
+    noOwnerText: 'No Owner',
+
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    getChartData: function(snapshots){
+        if (snapshots){
+            this.historicalSnapshots = snapshots;
+        }
+        var ownerHash = this.processData(),
+            userHash = this.getUserHash(),
+            closedSeriesData = [],
+            openSeriesData = [],
+            noOwnerText = this.noOwnerText,
+            categories = [];
+
+
+            var sortedOwnerObjs = _.sortBy(ownerHash, function(obj){return -obj.closed.length;});
+
+            _.each(sortedOwnerObjs, function(obj){
+                var categoryVal = obj.objectID;
+
+                if (categoryVal > 0 && userHash[categoryVal]){
+                    categoryVal = userHash[categoryVal].FirstName + ' ' + userHash[categoryVal].LastName || userHash[categoryVal].UserName || categoryVal;
+                } else {
+                    categoryVal = noOwnerText;
+                }
+
+                categories.push(categoryVal);
+
+                closedSeriesData.push(obj.closed.length);
+                openSeriesData.push(obj.open.length);
+            });
+            return {
+                categories: categories,
+                series: [
+
+                    {name: 'Current Work In Progress', type: 'column', data: openSeriesData, stack: 1},
+                    {name: 'Completed Items', type: 'column', data: closedSeriesData, stack: 1}
+                ]};
+    },
+    processData: function(){
+
+
+        var snaps_by_oid = Rally.technicalservices.Toolbox.aggregateSnapsByOidForModel(this.historicalSnapshots),
+            statePrecedences = this.statePrecedence,
+            completedStateIndex = _.indexOf(statePrecedences, this.completedStateValue),
+            stateFieldName = this.stateFieldName,
+            previousValuesStateFieldName = this.previousValuesStateFieldName,
+            ownerHash = {};
+
+        _.each(snaps_by_oid, function(snaps, oid){
+            var closed = null,
+                owner = snaps[0].Owner || -1;
+
+            _.each(snaps, function(snap){
+                var stateIndex = _.indexOf(statePrecedences, snap[stateFieldName]),
+                    prevStateIndex = _.indexOf(statePrecedences, snap[previousValuesStateFieldName]);
+
+                if (stateIndex >= completedStateIndex && prevStateIndex < completedStateIndex){
+                    closed = snap.ObjectID || -1;
+                    owner = snap.Owner;
+                }
+                if (closed && stateIndex < completedStateIndex){
+                    closed = null;  //Don't count this...
+                }
+            });
+
+            if (owner.length == 0){
+                owner = -1;
+            }
+            if (closed){
+                if (!ownerHash[owner]){
+                    ownerHash[owner] = {closed: [], open: [], objectID: owner};
+                }
+                ownerHash[owner].closed.push(closed);
+            }
+        });
+
+        _.each(this.currentRecords, function(r){
+            if (r.get('ScheduleState') == 'In-Progress'){
+                var ownerKey = r.get('Owner') ? r.get('Owner').ObjectID : -1;
+
+                if (!ownerHash[ownerKey]){
+                    ownerHash[ownerKey] = {closed: [], open: [], objectID: ownerKey};
+                }
+                ownerHash[ownerKey].open.push(r);
+            }
+        });
+        return ownerHash;
+
+
+
+    },
+    getUserHash: function(){
+        var userHash = {};
+        _.each(this.currentRecords, function(r){
+            var owner = r.get('Owner');
+            if (owner){
+                userHash[owner.ObjectID] = owner;
+            }
+        });
+        userHash[-1] = this.noOwnerText;
+        return userHash;
+    }
+
+
+});
+/**
+ * Created by kcorkan on 5/20/15.
+ */
+Ext.define('Rally.technicalservices.Toolbox',{
+    singleton: true,
+
+    fetchAllowedValuesPrecedenceArray: function(fieldName){
+        var deferred = Ext.create('Deft.Deferred');
+
+        Rally.data.ModelFactory.getModel({
+            type: 'HierarchicalRequirement',
+            success: function(model) {
+                model.getField(fieldName).getAllowedValueStore().load({
+                    callback: function (records, operation, success) {
+                        if (success) {
+                            var allowedValuesArray = [];
+                            _.each(records, function (av) {
+                                allowedValuesArray.push(av.get('StringValue'));
+                            });
+                            deferred.resolve(allowedValuesArray);
+                        } else {
+                            deferred.reject(operation);
+                        }
+                    }
+                });
+            },
+            failure: function(){
+                deferred.reject('Failed to load model HierarchicalRequirement');
+            }
+        });
+
+        return deferred;
+    },
+    aggregateSnapsByOidForModel: function(snaps){
+        //Return a hash of objects (key=ObjectID) with all snapshots for the object
+        var snaps_by_oid = {};
+        Ext.each(snaps, function(snap){
+            var oid = snap.ObjectID || snap.get('ObjectID');
+            if (snaps_by_oid[oid] == undefined){
+                snaps_by_oid[oid] = [];
+            }
+            snaps_by_oid[oid].push(snap.getData());
+
+        });
+        return snaps_by_oid;
+    },
+    getRecordsHashByField: function(fieldName, records){
+        var hash = {};
+        _.each(records, function(r){
+            var key = r.get(fieldName);
+            if (!hash[key]){
+                hash[key] = [];
+            }
+            hash[key].push(r);
+        });
+        return hash;
+    }
+});
+Ext.define("ts-kanban-team-summary", {
+
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+
+    defaultDays: 90,
+    defaultMargin: 10,
+
+    fetchList: ['Owner','ScheduleState','_TypeHierarchy','_ValidFrom','_ValidTo','_PreviousValues.ScheduleState'],
+    hydrateList:  ['ScheduleState','_TypeHierarchy','_PreviousValues.ScheduleState'],
+    currentDataFetchList: ['Owner','ScheduleState','FormattedID','ObjectID','UserName','FirstName','LastName'],
+    completedStateValue: 'Completed',
+    stateField: 'ScheduleState',
+    previousValuesStateField: '_PreviousValues.ScheduleState',
+
+    launch: function() {
+       // this.logger.log('Project Children', this.getContext().getProject().Name, this.getContext().getProject().Children.Count);
+        //if (this.getContext().getProject().Children.Count > 0){
+        //    this.add({
+        //        xtype: 'container',
+        //        html: "This app is designed to work only for project (Teams) with no child projects."
+        //    });
+        //    return;
+        //}
+        Rally.technicalservices.Toolbox.fetchAllowedValuesPrecedenceArray(this.stateField).then({
+            scope: this,
+            success: function(allowedValuesArray){
+
+                this._addComponents();
+                this._initApp(allowedValuesArray);
+            },
+            failure: function(msg){
+                Rally.ui.notify.Notifier.showError({message: msg});
+            }
+        });
+
+    },
+    _initApp: function(allowedValuesArray){
+        this.logger.log('_initApp');
+        this.allowedValuesArray = allowedValuesArray;
+
+        this.setLoading(true);
+        var promises = [
+            this._fetchResolvedData(),
+            this._fetchCurrentData()
+        ];
+
+        Deft.Promise.all(promises).then({
+            scope: this,
+            success: function(snapshotsAndRecords){
+                this.logger.log('_fetchData success', snapshotsAndRecords);
+                this.setLoading(false);
+                this.currentRecords = snapshotsAndRecords[1];
+
+
+                this._updateApp(snapshotsAndRecords[0]);
+            },
+            failure: function(operation){
+                this.setLoading(false);
+                Rally.ui.notify.Notifier.showError('Failed to load artifact data: ' + operation.error.errors[0]);
+            }
+        });
+    },
+    _updateApp: function(snapshots){
+
+        this.getBodyCt().removeAll();
+        if (!snapshots){
+            this.setLoading(true);
+            this._fetchResolvedData().then({
+                scope: this,
+                success: function(snapshots){
+                    this.setLoading(false);
+                    this._buildChart(snapshots);
+                },
+                failure: function(operation){
+                    this.setLoading(false);
+                    Rally.ui.notify.Notifier.showError('Failed to load artifact data: ' + operation.error.errors[0]);
+                }
+            });
+        } else {
+            this._buildChart(snapshots);
+        }
+
+
+    },
+    _buildChart: function(snapshots){
+        var calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
+            itemId: 'chart-summary',
+            historicalSnapshots: snapshots,
+            currentRecords: this.currentRecords,
+            statePrecedence: this.allowedValuesArray,
+            completedStateValue: this.completedStateValue,
+            stateFieldName: this.stateField,
+            previousValuesStateFieldName: this.previousValuesStateField
+        });
+        var chartData = calculator.getChartData();
+
+        this.logger.log('chartData',chartData);
+        this.getBodyCt().add({
+            xtype: 'rallychart',
+            loadMask: false,
+            chartConfig: this.getChartConfig(chartData.categories),
+            chartData: {
+                series: chartData.series
+            }
+        });
+    },
+    getChartConfig: function(categories){
+        return  {
+            chart: {
+                type: 'column'
+            },
+            title: {
+                text: 'Team Summary from ' + Rally.util.DateTime.formatWithDefault(Rally.util.DateTime.fromIsoString(this.getStartDate())),
+                align: 'center'
+            },
+            xAxis: [{
+                categories:  categories,
+
+                labels: {
+                    align: 'left',
+                    rotation: 70
+                }
+            }],
+            yAxis: {
+                min: 0,
+                title: 'Number of Items Completed'
+            },
+            plotOptions: {
+                bar: {
+                    pointPadding: 10
+                },
+                series: {
+                    stacking: 'normal',
+                    pointWidth: 15
+                }
+            }
+        };
+    },
+    _fetchResolvedData: function(){
+        var deferred = Ext.create('Deft.Deferred');
+        var startDate = this.getStartDate() || Rally.util.DateTime.toIsoString
+
+        var find = {
+            _TypeHierarchy: {$in: ['Defect','HierarchicalRequirement']},
+            _ValidFrom: {$gte: this.getStartDate()},
+            Project: this.getContext().getProject().ObjectID,
+            "_PreviousValues.ScheduleState": {$exists: true},
+            Children: null
+        };
+
+        var store = Ext.create('Rally.data.lookback.SnapshotStore',{
+            fetch: this.fetchList,
+            limit: 'Infinity',
+            findConfig: find,
+            hydrate: this.hydrateList
+        });
+
+        store.load({
+            callback: function(records, operation, success){
+                if (success) {
+                    deferred.resolve(records);
+                } else {
+                    deferred.reject(operation);
+                }
+            }
+        });
+        return deferred;
+    },
+    _fetchCurrentData: function(){
+        var deferred = Ext.create('Deft.Deferred');
+
+        var store = Ext.create('Rally.data.wsapi.artifact.Store',{
+            limit: 'Infinity',
+            models: ['Defect','UserStory'],
+            fetch: this.currentDataFetchList,
+            context: {
+                project: this.getContext().getProjectRef()
+            },
+            filters: [{
+                property: 'ScheduleState',
+                value: 'In-Progress'
+            }]
+        });
+
+        store.load({
+            callback: function(records, operation, success){
+                if (success) {
+                    deferred.resolve(records);
+                } else {
+                    deferred.reject(operation);
+                }
+            }
+        });
+        return deferred;
+    },
+    _addComponents: function(){
+        var header = this.add({
+            xtype: 'container',
+            class: 'header',
+            layout: {
+                type: 'hbox'
+            }
+        });
+
+        var body = this.add({
+            xtype: 'container',
+            itemId: 'ct-body'
+        });
+
+        var cb = header.add({
+            xtype: 'rallydatefield',
+            value: this.getDateInPast(),
+            fieldLabel: 'Start from Date',
+            itemId: 'df-start',
+            labelAlign: 'right',
+            maxValue: this.getDateInPast(1),
+            value: Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays),
+            margin: this.defaultMargin,
+            stateId: this.getContext().getScopedStateId('ts-date'),
+            stateful: true
+        });
+        cb.on('change', function(df){this._updateApp();}, this);
+
+    },
+    getDateInPast: function(daysBack){
+        if (!daysBack){
+            daysBack = this.defaultDays;
+        }
+        return Rally.util.DateTime.add(new Date(), 'day', -daysBack);
+    },
+    getStartDate: function(){
+        this.logger.log('getStartDate',this.down('#df-start').getValue());
+            return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue()) || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
+    },
+    getBodyCt: function(){
+        return this.down('#ct-body');
+    }
+});
+
+            
+               Rally.launchApp('ts-kanban-team-summary', {
+                   name: 'Kanban Team Summary'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+    </style>
+
+</head>
+<body></body>
+</html>
