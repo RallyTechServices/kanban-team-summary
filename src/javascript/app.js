@@ -13,16 +13,11 @@ Ext.define("ts-kanban-team-summary", {
     completedStateValue: 'Completed',
     stateField: 'ScheduleState',
     previousValuesStateField: '_PreviousValues.ScheduleState',
+    userFetchList: ['ObjectID','FirstName','MiddleName','LastName','DisplayName','UserName','c_Country'],
+    noTeamText: 'No Team',
 
     launch: function() {
-       // this.logger.log('Project Children', this.getContext().getProject().Name, this.getContext().getProject().Children.Count);
-        //if (this.getContext().getProject().Children.Count > 0){
-        //    this.add({
-        //        xtype: 'container',
-        //        html: "This app is designed to work only for project (Teams) with no child projects."
-        //    });
-        //    return;
-        //}
+
         Rally.technicalservices.Toolbox.fetchAllowedValuesPrecedenceArray(this.stateField).then({
             scope: this,
             success: function(allowedValuesArray){
@@ -34,7 +29,6 @@ Ext.define("ts-kanban-team-summary", {
                 Rally.ui.notify.Notifier.showError({message: msg});
             }
         });
-
     },
     _initApp: function(allowedValuesArray){
         this.logger.log('_initApp');
@@ -42,19 +36,20 @@ Ext.define("ts-kanban-team-summary", {
 
         this.setLoading(true);
         var promises = [
+            this._fetchUsersAndTeams(),
             this._fetchResolvedData(),
             this._fetchCurrentData()
         ];
 
         Deft.Promise.all(promises).then({
             scope: this,
-            success: function(snapshotsAndRecords){
-                this.logger.log('_fetchData success', snapshotsAndRecords);
+            success: function(teamHashAndSnapshotsAndRecords){
+                this.logger.log('_fetchData success', teamHashAndSnapshotsAndRecords);
                 this.setLoading(false);
-                this.currentRecords = snapshotsAndRecords[1];
-
-
-                this._updateApp(snapshotsAndRecords[0]);
+                this.currentRecords = teamHashAndSnapshotsAndRecords[2];
+                this.teamHash = teamHashAndSnapshotsAndRecords[0];
+                this.snapshots = teamHashAndSnapshotsAndRecords[1];
+                this._updateApp(teamHashAndSnapshotsAndRecords[1]);
             },
             failure: function(operation){
                 this.setLoading(false);
@@ -64,14 +59,24 @@ Ext.define("ts-kanban-team-summary", {
     },
     _updateApp: function(snapshots){
 
-        this.getBodyCt().removeAll();
+        this._clearCharts();
         if (!snapshots){
             this.setLoading(true);
             this._fetchResolvedData().then({
                 scope: this,
                 success: function(snapshots){
                     this.setLoading(false);
-                    this._buildChart(snapshots);
+                    this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
+                        itemId: 'chart-summary',
+                        historicalSnapshots: snapshots,
+                        currentRecords: this.currentRecords,
+                        statePrecedence: this.allowedValuesArray,
+                        completedStateValue: this.completedStateValue,
+                        stateFieldName: this.stateField,
+                        previousValuesStateFieldName: this.previousValuesStateField,
+                        teamHash: this.teamHash
+                    });
+                    this._buildTeamChart(this.calculator);
                 },
                 failure: function(operation){
                     this.setLoading(false);
@@ -79,64 +84,185 @@ Ext.define("ts-kanban-team-summary", {
                 }
             });
         } else {
-            this._buildChart(snapshots);
+            this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
+                itemId: 'chart-summary',
+                historicalSnapshots: snapshots,
+                currentRecords: this.currentRecords,
+                statePrecedence: this.allowedValuesArray,
+                completedStateValue: this.completedStateValue,
+                stateFieldName: this.stateField,
+                previousValuesStateFieldName: this.previousValuesStateField,
+                teamHash: this.teamHash
+            });
+            this._buildTeamChart(this.calculator);
         }
+    },
+    _buildTeamChart: function(calculator){
 
+        var me = this,
+            chartData = calculator.getTeamChartData(),
+            chartConfig = this.getTeamChartConfig('Team Summary', chartData.categories, chartData.series, chartData.drilldown);
+
+        this.logger.log('chartData',chartData,chartConfig);
+
+        this.getTeamCt().add({
+            xtype: 'rallychart',
+            itemId: 'team-chart',
+            loadMask: false,
+            chartConfig: chartConfig,
+            chartData: {
+                series: chartData.series,
+            }
+        });
+    },
+    _drilldownPerson: function(user_oid){
 
     },
-    _buildChart: function(snapshots){
-        var calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
-            itemId: 'chart-summary',
-            historicalSnapshots: snapshots,
-            currentRecords: this.currentRecords,
-            statePrecedence: this.allowedValuesArray,
-            completedStateValue: this.completedStateValue,
-            stateFieldName: this.stateField,
-            previousValuesStateFieldName: this.previousValuesStateField
-        });
-        var chartData = calculator.getChartData();
+    _drilldownTeam: function(team, thisApp){
+        var chartData = thisApp.calculator.getTeamUsersChartData(team),
+            chartConfig = thisApp.getTeamMembersChartConfig(team, chartData.categories, thisApp);
 
-        this.logger.log('chartData',chartData);
-        this.getBodyCt().add({
+        thisApp.logger.log('_drilldownTeam chartData',chartData);
+
+        thisApp.getTeamMembersCt().removeAll();
+        thisApp.getTeamMembersCt().add({
             xtype: 'rallychart',
+            itemId: 'team-members-chart',
             loadMask: false,
-            chartConfig: this.getChartConfig(chartData.categories),
+            chartConfig: chartConfig,
             chartData: {
                 series: chartData.series
             }
         });
     },
-    getChartConfig: function(categories){
+    getTeamMembersChartConfig: function(title, categories, thisApp){
+
         return  {
             chart: {
-                type: 'column'
+                type: 'bar'
             },
             title: {
-                text: 'Team Summary from ' + Rally.util.DateTime.formatWithDefault(Rally.util.DateTime.fromIsoString(this.getStartDate())),
+                text: title,
                 align: 'center'
+            },
+            subtitle: {
+                text: Rally.util.DateTime.formatWithDefault(Rally.util.DateTime.fromIsoString(thisApp.getStartDate())) + ' to present'
+
             },
             xAxis: [{
                 categories:  categories,
-
-                labels: {
-                    align: 'left',
-                    rotation: 70
-                }
             }],
             yAxis: {
                 min: 0,
-                title: 'Number of Items Completed'
+                title: 'Number of Artifacts'
             },
             plotOptions: {
                 bar: {
-                    pointPadding: 10
+               //     pointPadding: 10
                 },
                 series: {
-                    stacking: 'normal',
-                    pointWidth: 15
+                    point: {
+                        events: {
+                            click: function (event) {
+                                console.log('this', this, thisApp);
+                            }
+                        }
+                    },
+                    stacking: 'normal'
                 }
             }
         };
+
+    },
+    getTeamChartConfig: function(title, categories){
+        var me = this;
+
+        return  {
+            chart: {
+                type: 'bar'
+            },
+            title: {
+                text: title,
+                align: 'center'
+            },
+            subtitle: {
+                text: Rally.util.DateTime.formatWithDefault(Rally.util.DateTime.fromIsoString(this.getStartDate())) + ' to present'
+
+            },
+            xAxis: [{
+                categories:  categories,
+            }],
+            yAxis: {
+                min: 0,
+                title: 'Number of Artifacts'
+            },
+            plotOptions: {
+                bar: {
+                   pointPadding: 10
+                },
+                series: {
+                    point: {
+                    events: {
+                    click: function (event) {
+                        console.log('this', this);
+                        me._drilldownTeam(this.category, me);
+                    }}},
+                    stacking: 'normal'
+                }
+            }
+        };
+    },
+    _fetchUsersAndTeams: function(){
+        var deferred = Ext.create('Deft.Deferred'),
+            userFetchList = this.userFetchList,
+            noTeamText = this.noTeamText;
+
+        var store = Ext.create('Rally.data.wsapi.Store',{
+            model: 'Project',
+            fetch: ['TeamMembers'],
+            filters: [{
+                property: 'ObjectID',
+                value: this.getContext().getProject().ObjectID
+            }],
+            limit: 'Infinity'
+        });
+        store.load({
+            scope: this,
+            callback: function(records, operation, success){
+                if (success){
+                    if (records.length){
+                        console.log('records',records);
+                        records[0].getCollection('TeamMembers').load({
+                            scope: this,
+                            fetch: userFetchList,
+                            callback: function(col_records, col_operation, col_success){
+                                if (col_success){
+                                    var team_hash = {};
+
+                                    _.each(col_records, function(u){
+                                        var team = u.get('c_Country') || noTeamText;
+                                        if (!_.has(team_hash, team)){
+                                            team_hash[team] = [];
+                                        }
+                                        team_hash[team].push(u);
+                                    });
+
+                                    deferred.resolve(team_hash);
+                                } else {
+                                    deferred.reject(col_operation);
+                                }
+                            }
+                        });
+                    } else {
+                        deferred.resolve([]);
+                    }
+                } else {
+                    deferred.reject(operation);
+                }
+            }
+        });
+
+        return deferred;
     },
     _fetchResolvedData: function(){
         var deferred = Ext.create('Deft.Deferred');
@@ -208,6 +334,18 @@ Ext.define("ts-kanban-team-summary", {
             xtype: 'container',
             itemId: 'ct-body'
         });
+        body.add({
+            xtype: 'container',
+            itemId: 'ct-teams'
+        });
+        body.add({
+            xtype: 'container',
+            itemId: 'ct-team-members'
+        });
+        body.add({
+            xtype: 'container',
+            itemId: 'ct-person'
+        });
 
         var cb = header.add({
             xtype: 'rallydatefield',
@@ -234,7 +372,18 @@ Ext.define("ts-kanban-team-summary", {
         this.logger.log('getStartDate',this.down('#df-start').getValue());
             return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue()) || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
     },
-    getBodyCt: function(){
-        return this.down('#ct-body');
+    getTeamCt: function(){
+        return this.down('#ct-teams');
+    },
+    getTeamMembersCt: function(){
+        return this.down('#ct-team-members');
+    },
+    getPersonCt: function(){
+        return this.down('#ct-person');
+    },
+    _clearCharts: function(){
+        this.getTeamCt().removeAll();
+        this.getTeamMembersCt().removeAll();
+        this.getPersonCt().removeAll();
     }
 });

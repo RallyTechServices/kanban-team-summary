@@ -1,5 +1,7 @@
 #Kanban Team Summary
 
+Shows performance for all team members of the selected project.  
+
 ## Development Notes
 
 ### First Load
