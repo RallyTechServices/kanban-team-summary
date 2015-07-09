@@ -48,8 +48,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             }
        }, this);
 
-
-        console.log('series',categories, seriesData, drilldownData);
         return {
             categories: categories,
             series: [
@@ -69,7 +67,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             categories = [];
 
             var team_members = _.sortBy(ownerHash, function(obj){return -obj.closed.length;});
-        console.log('teeeeeam', team, thisTeamHash,userHash, ownerHash, _.keys(ownerHash).length);
 
         var user_oids = [];
 
@@ -110,10 +107,8 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
 
         var ownerHash = this.processData([userOid]),
             classifications = {};
-        console.log('owenrHash',ownerHash, userOid);
         if (ownerHash[userOid].closed){
             _.each(ownerHash[userOid].closed, function(c){
-                console.log('closed', c);
                 if (classifications[c] == undefined){
                     classifications[c] = 0;
                 }
@@ -122,15 +117,12 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
         }
         if (ownerHash[userOid].open){
             _.each( ownerHash[userOid].open, function(o){
-                console.log('open', o);
                 if (classifications[o] == undefined){
                     classifications[o] = 0;
                 }
                 classifications[o]++;
             });
         }
-
-        console.log('classifications', classifications);
 
         var data = [];
         _.each(classifications, function(c, name){
@@ -156,49 +148,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
                 y: 10.38
             }]
         }];
-    },
-    getChartData: function(snapshots){
-        if (snapshots){
-            this.historicalSnapshots = snapshots;
-        }
-        var ownerHash = this.processData(),
-            userHash = this.getUserHash(),
-            closedSeriesData = [],
-            openSeriesData = [],
-            noOwnerText = this.noOwnerText,
-            categories = [];
-
-
-            var sortedOwnerObjs = _.sortBy(ownerHash, function(obj){return -obj.closed.length;});
-
-            _.each(sortedOwnerObjs, function(obj){
-                var categoryVal = obj.objectID;
-
-                if (categoryVal > 0 && userHash[categoryVal]){
-                    categoryVal = userHash[categoryVal].FirstName + ' ' + userHash[categoryVal].LastName || userHash[categoryVal].UserName || categoryVal;
-                } else {
-                    categoryVal = noOwnerText;
-                }
-
-                if (!Ext.Array.contains(categories, categoryVal)){
-                    categories.push(categoryVal);
-                }
-
-                closedSeriesData.push(obj.closed.length);
-                openSeriesData.push(obj.open.length);
-            });
-
-
-
-
-
-            return {
-                categories: categories,
-                series: [
-
-                    {name: 'Current Work In Progress', type: 'column', data: openSeriesData, stack: 1},
-                    {name: 'Completed Items', type: 'column', data: closedSeriesData, stack: 1}
-                ]};
     },
     processData: function(teamMembers){
 

@@ -18,10 +18,14 @@ Ext.define('Rally.technicalservices.chart.TeamMembers',{
             this.team = team;
         }
         this.removeAll();
-        this.setTitle(team);
+
+        if (!this.team){
+            return;
+        }
+
+        this.setTitle(this.team);
         var chartData = this.calculator.getTeamUsersChartData(this.team);
 
-        console.log('chartData', chartData);
         this.add({
             xtype: 'rallychart',
             itemId: 'team-members-chart',

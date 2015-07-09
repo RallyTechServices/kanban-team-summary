@@ -3,11 +3,11 @@
 <head>
     <title>Kanban Team Summary</title>
     <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Wed Jul 08 2015 17:06:11 GMT-0700 (PDT) -->
+    <!--  Build Date: Thu Jul 09 2015 11:01:10 GMT-0700 (PDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Wed Jul 08 2015 17:06:11 GMT-0700 (PDT)";
-        var CHECKSUM = 18419189295;
+        var APP_BUILD_DATE = "Thu Jul 09 2015 11:01:10 GMT-0700 (PDT)";
+        var CHECKSUM = 16504845045;
     </script>
     
     <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
@@ -153,14 +153,18 @@ Ext.define('Rally.technicalservices.chart.Person',{
         this.updatePanel();
     },
     updatePanel: function(userOid, userLabel){
+
         if (userOid && userLabel){
             this.userOid = userOid;
             this.userLabel = userLabel;
         }
+        this.removeAll();
 
+        if (!this.userOid){
+            return;
+        }
         var chartData = this.calculator.getPersonChartData(this.userOid);
 
-        this.removeAll();
         this.setTitle(this.userLabel);
         this.add({
             xtype: 'rallychart',
@@ -223,10 +227,14 @@ Ext.define('Rally.technicalservices.chart.TeamMembers',{
             this.team = team;
         }
         this.removeAll();
-        this.setTitle(team);
+
+        if (!this.team){
+            return;
+        }
+
+        this.setTitle(this.team);
         var chartData = this.calculator.getTeamUsersChartData(this.team);
 
-        console.log('chartData', chartData);
         this.add({
             xtype: 'rallychart',
             itemId: 'team-members-chart',
@@ -383,8 +391,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             }
        }, this);
 
-
-        console.log('series',categories, seriesData, drilldownData);
         return {
             categories: categories,
             series: [
@@ -404,7 +410,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             categories = [];
 
             var team_members = _.sortBy(ownerHash, function(obj){return -obj.closed.length;});
-        console.log('teeeeeam', team, thisTeamHash,userHash, ownerHash, _.keys(ownerHash).length);
 
         var user_oids = [];
 
@@ -445,10 +450,8 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
 
         var ownerHash = this.processData([userOid]),
             classifications = {};
-        console.log('owenrHash',ownerHash, userOid);
         if (ownerHash[userOid].closed){
             _.each(ownerHash[userOid].closed, function(c){
-                console.log('closed', c);
                 if (classifications[c] == undefined){
                     classifications[c] = 0;
                 }
@@ -457,15 +460,12 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
         }
         if (ownerHash[userOid].open){
             _.each( ownerHash[userOid].open, function(o){
-                console.log('open', o);
                 if (classifications[o] == undefined){
                     classifications[o] = 0;
                 }
                 classifications[o]++;
             });
         }
-
-        console.log('classifications', classifications);
 
         var data = [];
         _.each(classifications, function(c, name){
@@ -491,49 +491,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
                 y: 10.38
             }]
         }];
-    },
-    getChartData: function(snapshots){
-        if (snapshots){
-            this.historicalSnapshots = snapshots;
-        }
-        var ownerHash = this.processData(),
-            userHash = this.getUserHash(),
-            closedSeriesData = [],
-            openSeriesData = [],
-            noOwnerText = this.noOwnerText,
-            categories = [];
-
-
-            var sortedOwnerObjs = _.sortBy(ownerHash, function(obj){return -obj.closed.length;});
-
-            _.each(sortedOwnerObjs, function(obj){
-                var categoryVal = obj.objectID;
-
-                if (categoryVal > 0 && userHash[categoryVal]){
-                    categoryVal = userHash[categoryVal].FirstName + ' ' + userHash[categoryVal].LastName || userHash[categoryVal].UserName || categoryVal;
-                } else {
-                    categoryVal = noOwnerText;
-                }
-
-                if (!Ext.Array.contains(categories, categoryVal)){
-                    categories.push(categoryVal);
-                }
-
-                closedSeriesData.push(obj.closed.length);
-                openSeriesData.push(obj.open.length);
-            });
-
-
-
-
-
-            return {
-                categories: categories,
-                series: [
-
-                    {name: 'Current Work In Progress', type: 'column', data: openSeriesData, stack: 1},
-                    {name: 'Completed Items', type: 'column', data: closedSeriesData, stack: 1}
-                ]};
     },
     processData: function(teamMembers){
 
@@ -726,6 +683,7 @@ Ext.define("ts-kanban-team-summary", {
         this._fetchResolvedData().then({
             scope: this,
             success: function (snapshots) {
+
                 this.setLoading(false);
                 this.snapshots = snapshots;
                 this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
@@ -753,29 +711,30 @@ Ext.define("ts-kanban-team-summary", {
         });
     },
     _updateTabs: function(){
+        this.logger.log('_updateTabs', this.calculator.historicalSnapshots.length);
         var tabs = this.down('#tabs');
         var active_tab = tabs.getActiveTab();
         tabs.child('#tab-team').updateCalculator(this.calculator);
-        tabs.child('#tab-team-members').updateCalculator(this.calculator);
+        tabs.child('#tab-team-member').updateCalculator(this.calculator);
         tabs.child('#tab-person').updateCalculator(this.calculator);
-        tabs.setActiveTab(true, active_tab);
+        tabs.setActiveTab(active_tab);
     },
     showTeamMembersTab: function(team){
         this.logger.log('showTeamMembersTag', team);
         var tab = this.down('#tabs').child('#tab-team-member');
-        tab.show();
+        tab.tab.show();
         tab.updatePanel(team);
 
-        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setActiveTab(tab);
         this.down('#tabs').setSize(this.getWidth() * 0.95)
     },
     showPersonTab: function(personOid, personLabel){
         this.logger.log('showPersonTab', personOid, personLabel);
         var tab = this.down('#tabs').child('#tab-person');
-        tab.show();
+        tab.tab.show();
         tab.updatePanel(personOid, personLabel);
 
-        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setActiveTab(tab);
         this.down('#tabs').setSize(this.getWidth() * 0.95)
     },
     _addTabs: function(){
@@ -793,11 +752,13 @@ Ext.define("ts-kanban-team-summary", {
             },{
                 itemId: 'tab-team-member',
                 xtype: 'tsteammemberschart',
-                calculator: this.calculator
+                calculator: this.calculator,
+                hidden: true
             },{
                 itemId: 'tab-person',
                 xtype: 'tspersonchart',
-                calculator: this.calculator
+                calculator: this.calculator,
+                hidden: true
             }]
         });
         tabs.setActiveTab(true, tabs.child('#tab-team'));
@@ -824,7 +785,6 @@ Ext.define("ts-kanban-team-summary", {
             callback: function(records, operation, success){
                 if (success){
                     if (records.length){
-                        console.log('records',records);
                         records[0].getCollection('TeamMembers').load({
                             scope: this,
                             fetch: userFetchList,
@@ -859,7 +819,7 @@ Ext.define("ts-kanban-team-summary", {
     },
     _fetchResolvedData: function(){
         var deferred = Ext.create('Deft.Deferred');
-        var startDate = this.getStartDate() || Rally.util.DateTime.toIsoString
+        var startDate = this.getStartDate();
 
         var find = {
             _TypeHierarchy: {$in: ['Defect','HierarchicalRequirement']},
@@ -878,7 +838,9 @@ Ext.define("ts-kanban-team-summary", {
         });
 
         store.load({
+            scope: this,
             callback: function(records, operation, success){
+                this.logger.log('_fetchResolvedData', success, records.length, operation);
                 if (success) {
                     deferred.resolve(records);
                 } else {
@@ -947,7 +909,7 @@ Ext.define("ts-kanban-team-summary", {
     },
     getStartDate: function(){
         this.logger.log('getStartDate',this.down('#df-start').getValue());
-            return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue()) || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
+        return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue());// || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
     }
 });
 

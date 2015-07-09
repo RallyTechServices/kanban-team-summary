@@ -62,6 +62,7 @@ Ext.define("ts-kanban-team-summary", {
         this._fetchResolvedData().then({
             scope: this,
             success: function (snapshots) {
+
                 this.setLoading(false);
                 this.snapshots = snapshots;
                 this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
@@ -89,29 +90,30 @@ Ext.define("ts-kanban-team-summary", {
         });
     },
     _updateTabs: function(){
+        this.logger.log('_updateTabs', this.calculator.historicalSnapshots.length);
         var tabs = this.down('#tabs');
         var active_tab = tabs.getActiveTab();
         tabs.child('#tab-team').updateCalculator(this.calculator);
-        tabs.child('#tab-team-members').updateCalculator(this.calculator);
+        tabs.child('#tab-team-member').updateCalculator(this.calculator);
         tabs.child('#tab-person').updateCalculator(this.calculator);
-        tabs.setActiveTab(true, active_tab);
+        tabs.setActiveTab(active_tab);
     },
     showTeamMembersTab: function(team){
         this.logger.log('showTeamMembersTag', team);
         var tab = this.down('#tabs').child('#tab-team-member');
-        tab.show();
+        tab.tab.show();
         tab.updatePanel(team);
 
-        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setActiveTab(tab);
         this.down('#tabs').setSize(this.getWidth() * 0.95)
     },
     showPersonTab: function(personOid, personLabel){
         this.logger.log('showPersonTab', personOid, personLabel);
         var tab = this.down('#tabs').child('#tab-person');
-        tab.show();
+        tab.tab.show();
         tab.updatePanel(personOid, personLabel);
 
-        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setActiveTab(tab);
         this.down('#tabs').setSize(this.getWidth() * 0.95)
     },
     _addTabs: function(){
@@ -129,11 +131,13 @@ Ext.define("ts-kanban-team-summary", {
             },{
                 itemId: 'tab-team-member',
                 xtype: 'tsteammemberschart',
-                calculator: this.calculator
+                calculator: this.calculator,
+                hidden: true
             },{
                 itemId: 'tab-person',
                 xtype: 'tspersonchart',
-                calculator: this.calculator
+                calculator: this.calculator,
+                hidden: true
             }]
         });
         tabs.setActiveTab(true, tabs.child('#tab-team'));
@@ -160,7 +164,6 @@ Ext.define("ts-kanban-team-summary", {
             callback: function(records, operation, success){
                 if (success){
                     if (records.length){
-                        console.log('records',records);
                         records[0].getCollection('TeamMembers').load({
                             scope: this,
                             fetch: userFetchList,
@@ -195,7 +198,7 @@ Ext.define("ts-kanban-team-summary", {
     },
     _fetchResolvedData: function(){
         var deferred = Ext.create('Deft.Deferred');
-        var startDate = this.getStartDate() || Rally.util.DateTime.toIsoString
+        var startDate = this.getStartDate();
 
         var find = {
             _TypeHierarchy: {$in: ['Defect','HierarchicalRequirement']},
@@ -214,7 +217,9 @@ Ext.define("ts-kanban-team-summary", {
         });
 
         store.load({
+            scope: this,
             callback: function(records, operation, success){
+                this.logger.log('_fetchResolvedData', success, records.length, operation);
                 if (success) {
                     deferred.resolve(records);
                 } else {
@@ -283,6 +288,6 @@ Ext.define("ts-kanban-team-summary", {
     },
     getStartDate: function(){
         this.logger.log('getStartDate',this.down('#df-start').getValue());
-            return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue()) || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
+        return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue());// || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
     }
 });
