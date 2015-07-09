@@ -9,14 +9,13 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
     previousValuesStateFieldName: null,
     teamHash: null,
     noOwnerText: 'No Owner',
+    noClassificationText: 'None',
+    classificationField: null,
 
     constructor: function(config){
         Ext.apply(this,config);
     },
-    getTeamChartData: function(snapshots){
-        if (snapshots){
-            this.historicalSnapshots = snapshots;
-        }
+    getTeamChartData: function(){
 
         var allTeamMembers = [];
         _.each(this.teamHash, function(members){
@@ -59,10 +58,8 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             ]
         };
     },
-    getTeamUsersChartData: function(team, snapshots){
-        if (snapshots){
-            this.historicalSnapshots = shapshots;
-        }
+    getTeamUsersChartData: function(team){
+
         var thisTeamHash = _.map(this.teamHash[team], function(t){ return t.get('ObjectID')}),
             ownerHash = this.processData(thisTeamHash),
             userHash = this.getUserHash(),
@@ -74,6 +71,7 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             var team_members = _.sortBy(ownerHash, function(obj){return -obj.closed.length;});
         console.log('teeeeeam', team, thisTeamHash,userHash, ownerHash, _.keys(ownerHash).length);
 
+        var user_oids = [];
 
         _.each(team_members, function(obj){
             var categoryVal = obj.objectID || noOwnerText;
@@ -88,9 +86,16 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
 
             if (!Ext.Array.contains(categories, categoryVal)){
                 categories.push(categoryVal);
+                user_oids.push(obj.ObjectID);
             }
-            closedSeriesData.push(obj.closed.length);
-            openSeriesData.push(obj.open.length);
+            closedSeriesData.push({
+                y: obj.closed.length,
+                userOid: obj.objectID
+            });
+            openSeriesData.push({
+                y: obj.open.length,
+                userOid: obj.objectID
+            });
         });
 
         return {
@@ -100,6 +105,57 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
                 {name: 'Completed Items', data: closedSeriesData, stack: 1}
             ]};
 
+    },
+    getPersonChartData: function(userOid){
+
+        var ownerHash = this.processData([userOid]),
+            classifications = {};
+        console.log('owenrHash',ownerHash, userOid);
+        if (ownerHash[userOid].closed){
+            _.each(ownerHash[userOid].closed, function(c){
+                console.log('closed', c);
+                if (classifications[c] == undefined){
+                    classifications[c] = 0;
+                }
+                classifications[c]++;
+            });
+        }
+        if (ownerHash[userOid].open){
+            _.each( ownerHash[userOid].open, function(o){
+                console.log('open', o);
+                if (classifications[o] == undefined){
+                    classifications[o] = 0;
+                }
+                classifications[o]++;
+            });
+        }
+
+        console.log('classifications', classifications);
+
+        var data = [];
+        _.each(classifications, function(c, name){
+            data.push({
+                name: name,
+                y: c
+            });
+        });
+
+        return [{ data: data}];
+
+        return [{
+            name: "Brands",
+            colorByPoint: true,
+            data: [{
+                name: "Microsoft Internet Explorer",
+                y: 56.33
+            },{
+                name: "Chrome",
+                y: 24.03
+            },{
+                name: "Firefox",
+                y: 10.38
+            }]
+        }];
     },
     getChartData: function(snapshots){
         if (snapshots){
@@ -151,19 +207,21 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             completedStateIndex = _.indexOf(statePrecedences, this.completedStateValue),
             stateFieldName = this.stateFieldName,
             previousValuesStateFieldName = this.previousValuesStateFieldName,
-            ownerHash = {};
+            ownerHash = {},
+            noClassificationText = this.noClassificationText,
+            classificationField = this.classificationField;
 
         _.each(snaps_by_oid, function(snaps, oid){
             var closed = null,
+                classification = null,
                 owner = snaps[0].Owner || -1;
-
 
             _.each(snaps, function(snap){
                 var stateIndex = _.indexOf(statePrecedences, snap[stateFieldName]),
                     prevStateIndex = _.indexOf(statePrecedences, snap[previousValuesStateFieldName]);
 
                 if (stateIndex >= completedStateIndex && prevStateIndex < completedStateIndex){
-                    closed = snap.ObjectID || -1;
+                    closed = snap[classificationField] || noClassificationText;
                     owner = snap.Owner;
                 }
                 if (closed && stateIndex < completedStateIndex){
@@ -190,7 +248,7 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
                     if (!ownerHash[ownerKey]){
                         ownerHash[ownerKey] = {closed: [], open: [], objectID: ownerKey};
                     }
-                    ownerHash[ownerKey].open.push(r);
+                    ownerHash[ownerKey].open.push(r.get(classificationField) || noClassificationText);
                 }
             }
         });

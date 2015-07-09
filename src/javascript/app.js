@@ -15,6 +15,7 @@ Ext.define("ts-kanban-team-summary", {
     previousValuesStateField: '_PreviousValues.ScheduleState',
     userFetchList: ['ObjectID','FirstName','MiddleName','LastName','DisplayName','UserName','c_Country'],
     noTeamText: 'No Team',
+    classificationField: 'c_DCOpsSwimlanes',
 
     launch: function() {
 
@@ -22,7 +23,6 @@ Ext.define("ts-kanban-team-summary", {
             scope: this,
             success: function(allowedValuesArray){
 
-                this._addComponents();
                 this._initApp(allowedValuesArray);
             },
             failure: function(msg){
@@ -37,7 +37,6 @@ Ext.define("ts-kanban-team-summary", {
         this.setLoading(true);
         var promises = [
             this._fetchUsersAndTeams(),
-            this._fetchResolvedData(),
             this._fetchCurrentData()
         ];
 
@@ -46,10 +45,11 @@ Ext.define("ts-kanban-team-summary", {
             success: function(teamHashAndSnapshotsAndRecords){
                 this.logger.log('_fetchData success', teamHashAndSnapshotsAndRecords);
                 this.setLoading(false);
-                this.currentRecords = teamHashAndSnapshotsAndRecords[2];
+
+                this.currentRecords = teamHashAndSnapshotsAndRecords[1];
                 this.teamHash = teamHashAndSnapshotsAndRecords[0];
-                this.snapshots = teamHashAndSnapshotsAndRecords[1];
-                this._updateApp(teamHashAndSnapshotsAndRecords[1]);
+                this._addHeader();
+                this._reloadSnapshots();
             },
             failure: function(operation){
                 this.setLoading(false);
@@ -57,160 +57,89 @@ Ext.define("ts-kanban-team-summary", {
             }
         });
     },
-    _updateApp: function(snapshots){
+    _reloadSnapshots: function(){
+        this.setLoading(true);
+        this._fetchResolvedData().then({
+            scope: this,
+            success: function (snapshots) {
+                this.setLoading(false);
+                this.snapshots = snapshots;
+                this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
+                    itemId: 'chart-summary',
+                    historicalSnapshots: snapshots,
+                    currentRecords: this.currentRecords,
+                    statePrecedence: this.allowedValuesArray,
+                    completedStateValue: this.completedStateValue,
+                    stateFieldName: this.stateField,
+                    previousValuesStateFieldName: this.previousValuesStateField,
+                    teamHash: this.teamHash,
+                    classificationField: 'c_DCOpsSwimlanes'
+                });
 
-        this._clearCharts();
-        if (!snapshots){
-            this.setLoading(true);
-            this._fetchResolvedData().then({
-                scope: this,
-                success: function(snapshots){
-                    this.setLoading(false);
-                    this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
-                        itemId: 'chart-summary',
-                        historicalSnapshots: snapshots,
-                        currentRecords: this.currentRecords,
-                        statePrecedence: this.allowedValuesArray,
-                        completedStateValue: this.completedStateValue,
-                        stateFieldName: this.stateField,
-                        previousValuesStateFieldName: this.previousValuesStateField,
-                        teamHash: this.teamHash
-                    });
-                    this._buildTeamChart(this.calculator);
-                },
-                failure: function(operation){
-                    this.setLoading(false);
-                    Rally.ui.notify.Notifier.showError('Failed to load artifact data: ' + operation.error.errors[0]);
+                if (!this.down('#tabs')){
+                    this._addTabs();
+                } else {
+                    this._updateTabs();
                 }
-            });
-        } else {
-            this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
-                itemId: 'chart-summary',
-                historicalSnapshots: snapshots,
-                currentRecords: this.currentRecords,
-                statePrecedence: this.allowedValuesArray,
-                completedStateValue: this.completedStateValue,
-                stateFieldName: this.stateField,
-                previousValuesStateFieldName: this.previousValuesStateField,
-                teamHash: this.teamHash
-            });
-            this._buildTeamChart(this.calculator);
-        }
-    },
-    _buildTeamChart: function(calculator){
-
-        var me = this,
-            chartData = calculator.getTeamChartData(),
-            chartConfig = this.getTeamChartConfig('Team Summary', chartData.categories, chartData.series, chartData.drilldown);
-
-        this.logger.log('chartData',chartData,chartConfig);
-
-        this.getTeamCt().add({
-            xtype: 'rallychart',
-            itemId: 'team-chart',
-            loadMask: false,
-            chartConfig: chartConfig,
-            chartData: {
-                series: chartData.series,
+            },
+            failure: function (operation) {
+                this.setLoading(false);
+                Rally.ui.notify.Notifier.showError('Failed to load artifact data: ' + operation.error.errors[0]);
             }
         });
     },
-    _drilldownPerson: function(user_oid){
-
+    _updateTabs: function(){
+        var tabs = this.down('#tabs');
+        var active_tab = tabs.getActiveTab();
+        tabs.child('#tab-team').updateCalculator(this.calculator);
+        tabs.child('#tab-team-members').updateCalculator(this.calculator);
+        tabs.child('#tab-person').updateCalculator(this.calculator);
+        tabs.setActiveTab(true, active_tab);
     },
-    _drilldownTeam: function(team, thisApp){
-        var chartData = thisApp.calculator.getTeamUsersChartData(team),
-            chartConfig = thisApp.getTeamMembersChartConfig(team, chartData.categories, thisApp);
+    showTeamMembersTab: function(team){
+        this.logger.log('showTeamMembersTag', team);
+        var tab = this.down('#tabs').child('#tab-team-member');
+        tab.show();
+        tab.updatePanel(team);
 
-        thisApp.logger.log('_drilldownTeam chartData',chartData);
+        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setSize(this.getWidth() * 0.95)
+    },
+    showPersonTab: function(personOid, personLabel){
+        this.logger.log('showPersonTab', personOid, personLabel);
+        var tab = this.down('#tabs').child('#tab-person');
+        tab.show();
+        tab.updatePanel(personOid, personLabel);
 
-        thisApp.getTeamMembersCt().removeAll();
-        thisApp.getTeamMembersCt().add({
-            xtype: 'rallychart',
-            itemId: 'team-members-chart',
-            loadMask: false,
-            chartConfig: chartConfig,
-            chartData: {
-                series: chartData.series
-            }
+        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setSize(this.getWidth() * 0.95)
+    },
+    _addTabs: function(){
+        var tabs = this.add({
+            xtype: 'tabpanel',
+            itemId: 'tabs',
+            activeTab: 'tab-team',
+            items: [{
+                itemId: 'tab-team',
+                xtype: 'tsteampanel',
+                calculator: this.calculator,
+                tabConfig: {
+                    title: 'Teams'
+                }
+            },{
+                itemId: 'tab-team-member',
+                xtype: 'tsteammemberschart',
+                calculator: this.calculator
+            },{
+                itemId: 'tab-person',
+                xtype: 'tspersonchart',
+                calculator: this.calculator
+            }]
         });
-    },
-    getTeamMembersChartConfig: function(title, categories, thisApp){
+        tabs.setActiveTab(true, tabs.child('#tab-team'));
+        this.down('#tabs').setSize(this.getWidth() * 0.95)
 
-        return  {
-            chart: {
-                type: 'bar'
-            },
-            title: {
-                text: title,
-                align: 'center'
-            },
-            subtitle: {
-                text: Rally.util.DateTime.formatWithDefault(Rally.util.DateTime.fromIsoString(thisApp.getStartDate())) + ' to present'
 
-            },
-            xAxis: [{
-                categories:  categories,
-            }],
-            yAxis: {
-                min: 0,
-                title: 'Number of Artifacts'
-            },
-            plotOptions: {
-                bar: {
-               //     pointPadding: 10
-                },
-                series: {
-                    point: {
-                        events: {
-                            click: function (event) {
-                                console.log('this', this, thisApp);
-                            }
-                        }
-                    },
-                    stacking: 'normal'
-                }
-            }
-        };
-
-    },
-    getTeamChartConfig: function(title, categories){
-        var me = this;
-
-        return  {
-            chart: {
-                type: 'bar'
-            },
-            title: {
-                text: title,
-                align: 'center'
-            },
-            subtitle: {
-                text: Rally.util.DateTime.formatWithDefault(Rally.util.DateTime.fromIsoString(this.getStartDate())) + ' to present'
-
-            },
-            xAxis: [{
-                categories:  categories,
-            }],
-            yAxis: {
-                min: 0,
-                title: 'Number of Artifacts'
-            },
-            plotOptions: {
-                bar: {
-                   pointPadding: 10
-                },
-                series: {
-                    point: {
-                    events: {
-                    click: function (event) {
-                        console.log('this', this);
-                        me._drilldownTeam(this.category, me);
-                    }}},
-                    stacking: 'normal'
-                }
-            }
-        };
     },
     _fetchUsersAndTeams: function(){
         var deferred = Ext.create('Deft.Deferred'),
@@ -276,8 +205,9 @@ Ext.define("ts-kanban-team-summary", {
             Children: null
         };
 
+        var fetch = this.fetchList.concat([this.classificationField]);
         var store = Ext.create('Rally.data.lookback.SnapshotStore',{
-            fetch: this.fetchList,
+            fetch: fetch,
             limit: 'Infinity',
             findConfig: find,
             hydrate: this.hydrateList
@@ -296,11 +226,11 @@ Ext.define("ts-kanban-team-summary", {
     },
     _fetchCurrentData: function(){
         var deferred = Ext.create('Deft.Deferred');
-
+        var fetch = this.currentDataFetchList.concat([this.classificationField]);
         var store = Ext.create('Rally.data.wsapi.artifact.Store',{
             limit: 'Infinity',
             models: ['Defect','UserStory'],
-            fetch: this.currentDataFetchList,
+            fetch: fetch,
             context: {
                 project: this.getContext().getProjectRef()
             },
@@ -321,30 +251,13 @@ Ext.define("ts-kanban-team-summary", {
         });
         return deferred;
     },
-    _addComponents: function(){
+    _addHeader: function(){
         var header = this.add({
             xtype: 'container',
             class: 'header',
             layout: {
                 type: 'hbox'
             }
-        });
-
-        var body = this.add({
-            xtype: 'container',
-            itemId: 'ct-body'
-        });
-        body.add({
-            xtype: 'container',
-            itemId: 'ct-teams'
-        });
-        body.add({
-            xtype: 'container',
-            itemId: 'ct-team-members'
-        });
-        body.add({
-            xtype: 'container',
-            itemId: 'ct-person'
         });
 
         var cb = header.add({
@@ -359,7 +272,7 @@ Ext.define("ts-kanban-team-summary", {
             stateId: this.getContext().getScopedStateId('ts-date'),
             stateful: true
         });
-        cb.on('change', function(df){this._updateApp();}, this);
+        cb.on('change', function(){this._reloadSnapshots();}, this);
 
     },
     getDateInPast: function(daysBack){
@@ -371,19 +284,5 @@ Ext.define("ts-kanban-team-summary", {
     getStartDate: function(){
         this.logger.log('getStartDate',this.down('#df-start').getValue());
             return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue()) || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
-    },
-    getTeamCt: function(){
-        return this.down('#ct-teams');
-    },
-    getTeamMembersCt: function(){
-        return this.down('#ct-team-members');
-    },
-    getPersonCt: function(){
-        return this.down('#ct-person');
-    },
-    _clearCharts: function(){
-        this.getTeamCt().removeAll();
-        this.getTeamMembersCt().removeAll();
-        this.getPersonCt().removeAll();
     }
 });
