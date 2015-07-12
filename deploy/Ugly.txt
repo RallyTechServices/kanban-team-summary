@@ -3,10 +3,10 @@
 <head>
     <title>Kanban Team Summary</title>
     <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Wed Jul 08 2015 17:06:12 GMT-0700 (PDT) -->
+    <!--  Build Date: Sun Jul 12 2015 08:42:20 GMT-0600 (MDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Wed Jul 08 2015 17:06:12 GMT-0700 (PDT)";
+        var APP_BUILD_DATE = "Sun Jul 12 2015 08:42:20 GMT-0600 (MDT)";
         var CHECKSUM = [%= checksum %];
     </script>
     
@@ -41,6 +41,27 @@
     margin-right: 5px;
     cursor: pointer;
 }
+
+.x-tab-active{
+    background-color: white!important;
+}
+.x-tab-bar .x-tab-default {
+    background-image: none;
+    background-color: #999;
+    border-color: #666;
+    border-radius: 0;
+}
+.x-tab-inner {
+    color: #222;
+    text-transform: none!important;
+    width: 200px!important;
+    font-size: 14px!important;
+    font-family: NotoSans, Helvetica, Arial;
+    white-space: normal;
+
+}
+
+
     </style>
 
 </head>

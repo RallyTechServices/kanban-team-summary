@@ -13,14 +13,18 @@ Ext.define('Rally.technicalservices.chart.Person',{
         this.updatePanel();
     },
     updatePanel: function(userOid, userLabel){
+
         if (userOid && userLabel){
             this.userOid = userOid;
             this.userLabel = userLabel;
         }
+        this.removeAll();
 
+        if (!this.userOid){
+            return;
+        }
         var chartData = this.calculator.getPersonChartData(this.userOid);
 
-        this.removeAll();
         this.setTitle(this.userLabel);
         this.add({
             xtype: 'rallychart',
@@ -35,8 +39,7 @@ Ext.define('Rally.technicalservices.chart.Person',{
                 plotShadow: false
             },
             title: {
-                text: this.userLabel,
-                align: 'center'
+                text: ''
             },
             plotOptions: {
                 pie: {
@@ -53,7 +56,7 @@ Ext.define('Rally.technicalservices.chart.Person',{
                 series: chartData
             }
         });
-        this.setHeight(Rally.getApp().getHeight() * 95);
+        this.setHeight(Rally.getApp().getHeight() * .95);
 
 
     },

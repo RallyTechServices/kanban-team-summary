@@ -4,20 +4,33 @@ Ext.define("ts-kanban-team-summary", {
     componentCls: 'app',
     logger: new Rally.technicalservices.Logger(),
 
-    defaultDays: 90,
     defaultMargin: 10,
 
-    fetchList: ['Owner','ScheduleState','_TypeHierarchy','_ValidFrom','_ValidTo','_PreviousValues.ScheduleState'],
-    hydrateList:  ['ScheduleState','_TypeHierarchy','_PreviousValues.ScheduleState'],
-    currentDataFetchList: ['Owner','ScheduleState','FormattedID','ObjectID','UserName','FirstName','LastName'],
-    completedStateValue: 'Completed',
-    stateField: 'ScheduleState',
-    previousValuesStateField: '_PreviousValues.ScheduleState',
-    userFetchList: ['ObjectID','FirstName','MiddleName','LastName','DisplayName','UserName','c_Country'],
+    fetchList: ['Owner','_TypeHierarchy','_ValidFrom','_ValidTo'],
+    hydrateList:  ['_TypeHierarchy'],
+    currentDataFetchList: ['Owner','FormattedID','ObjectID','UserName','FirstName','LastName'],
+    completedStateValue: 'Archive :|',
+    inProgressStateValue: 'WIP',
+    stateField: 'c_DCOpsKanban',
+    previousValuesStateField: '_PreviousValues.c_DCOpsKanban',
+    userFetchList: ['ObjectID','FirstName','MiddleName','LastName','DisplayName','UserName','Phone'],
     noTeamText: 'No Team',
     classificationField: 'c_DCOpsSwimlanes',
 
     launch: function() {
+
+        this.add({
+            xtype: 'container',
+            itemId: 'ct-loading',
+            flex: 1,
+            padding: 25,
+            style: {
+                textAlign: 'center',
+                fontFamily: 'NotoSansBold, Helvetica, Arial',
+                fontSize: '14px'
+            },
+            html: 'Loading team data...'
+        });
 
         Rally.technicalservices.Toolbox.fetchAllowedValuesPrecedenceArray(this.stateField).then({
             scope: this,
@@ -26,6 +39,7 @@ Ext.define("ts-kanban-team-summary", {
                 this._initApp(allowedValuesArray);
             },
             failure: function(msg){
+                this.down('#ct-loading').destroy();
                 Rally.ui.notify.Notifier.showError({message: msg});
             }
         });
@@ -34,7 +48,6 @@ Ext.define("ts-kanban-team-summary", {
         this.logger.log('_initApp');
         this.allowedValuesArray = allowedValuesArray;
 
-        this.setLoading(true);
         var promises = [
             this._fetchUsersAndTeams(),
             this._fetchCurrentData()
@@ -44,7 +57,7 @@ Ext.define("ts-kanban-team-summary", {
             scope: this,
             success: function(teamHashAndSnapshotsAndRecords){
                 this.logger.log('_fetchData success', teamHashAndSnapshotsAndRecords);
-                this.setLoading(false);
+                this.down('#ct-loading').destroy();
 
                 this.currentRecords = teamHashAndSnapshotsAndRecords[1];
                 this.teamHash = teamHashAndSnapshotsAndRecords[0];
@@ -58,10 +71,11 @@ Ext.define("ts-kanban-team-summary", {
         });
     },
     _reloadSnapshots: function(){
-        this.setLoading(true);
+        this.setLoading("Loading historical data...");
         this._fetchResolvedData().then({
             scope: this,
             success: function (snapshots) {
+
                 this.setLoading(false);
                 this.snapshots = snapshots;
                 this.calculator = Ext.create('Rally.technicalservices.KanbanTeamSummaryCalculator',{
@@ -70,10 +84,11 @@ Ext.define("ts-kanban-team-summary", {
                     currentRecords: this.currentRecords,
                     statePrecedence: this.allowedValuesArray,
                     completedStateValue: this.completedStateValue,
+                    inProgressStateValue: this.inProgressStateValue,
                     stateFieldName: this.stateField,
                     previousValuesStateFieldName: this.previousValuesStateField,
                     teamHash: this.teamHash,
-                    classificationField: 'c_DCOpsSwimlanes'
+                    classificationField: this.classificationField
                 });
 
                 if (!this.down('#tabs')){
@@ -89,57 +104,97 @@ Ext.define("ts-kanban-team-summary", {
         });
     },
     _updateTabs: function(){
+        this.logger.log('_updateTabs', this.calculator.historicalSnapshots.length);
         var tabs = this.down('#tabs');
         var active_tab = tabs.getActiveTab();
         tabs.child('#tab-team').updateCalculator(this.calculator);
-        tabs.child('#tab-team-members').updateCalculator(this.calculator);
+        tabs.child('#tab-team-member').updateCalculator(this.calculator);
         tabs.child('#tab-person').updateCalculator(this.calculator);
-        tabs.setActiveTab(true, active_tab);
+        tabs.setActiveTab(active_tab);
     },
     showTeamMembersTab: function(team){
         this.logger.log('showTeamMembersTag', team);
         var tab = this.down('#tabs').child('#tab-team-member');
-        tab.show();
+        tab.tab.show();
         tab.updatePanel(team);
 
-        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setActiveTab(tab);
         this.down('#tabs').setSize(this.getWidth() * 0.95)
     },
     showPersonTab: function(personOid, personLabel){
         this.logger.log('showPersonTab', personOid, personLabel);
         var tab = this.down('#tabs').child('#tab-person');
-        tab.show();
+        tab.tab.show();
         tab.updatePanel(personOid, personLabel);
 
-        this.down('#tabs').setActive(true, tab);
+        this.down('#tabs').setActiveTab(tab);
         this.down('#tabs').setSize(this.getWidth() * 0.95)
     },
     _addTabs: function(){
+        var tabHeight = 40,
+            tabWidth = 220;
+
         var tabs = this.add({
             xtype: 'tabpanel',
             itemId: 'tabs',
             activeTab: 'tab-team',
+            plain: true,
+            tabBar: {
+                height: tabHeight,
+                style: {
+                    backgroundColor: 'white'
+                }
+            },
             items: [{
                 itemId: 'tab-team',
                 xtype: 'tsteampanel',
                 calculator: this.calculator,
                 tabConfig: {
-                    title: 'Teams'
+                    title: 'Team Summary',
+                    height: tabHeight,
+                    maxWidth: tabWidth,
+                    width: tabWidth
+
                 }
+
             },{
                 itemId: 'tab-team-member',
                 xtype: 'tsteammemberschart',
-                calculator: this.calculator
+                calculator: this.calculator,
+                tabConfig: {
+                    height: tabHeight,
+                    maxWidth: tabWidth,
+                    width: tabWidth
+                },
+                hidden: true
             },{
                 itemId: 'tab-person',
                 xtype: 'tspersonchart',
-                calculator: this.calculator
+                calculator: this.calculator,
+                tabConfig: {
+                    height: tabHeight,
+                    maxWidth: tabWidth,
+                    width: tabWidth
+                },
+                hidden: true
             }]
         });
         tabs.setActiveTab(true, tabs.child('#tab-team'));
         this.down('#tabs').setSize(this.getWidth() * 0.95)
 
 
+    },
+    _getTeamKey: function(rec){
+        var key = null,
+            phone = rec.get('Phone');
+        if (phone){
+            var match = /Team:\s*(.*)/.exec(phone,"g");
+            if (match && match.length >= 2){
+                key = match[1];
+            }
+        }
+
+        return key;
     },
     _fetchUsersAndTeams: function(){
         var deferred = Ext.create('Deft.Deferred'),
@@ -160,7 +215,6 @@ Ext.define("ts-kanban-team-summary", {
             callback: function(records, operation, success){
                 if (success){
                     if (records.length){
-                        console.log('records',records);
                         records[0].getCollection('TeamMembers').load({
                             scope: this,
                             fetch: userFetchList,
@@ -169,12 +223,12 @@ Ext.define("ts-kanban-team-summary", {
                                     var team_hash = {};
 
                                     _.each(col_records, function(u){
-                                        var team = u.get('c_Country') || noTeamText;
+                                        var team = this._getTeamKey(u) || noTeamText;
                                         if (!_.has(team_hash, team)){
                                             team_hash[team] = [];
                                         }
                                         team_hash[team].push(u);
-                                    });
+                                    }, this);
 
                                     deferred.resolve(team_hash);
                                 } else {
@@ -195,17 +249,19 @@ Ext.define("ts-kanban-team-summary", {
     },
     _fetchResolvedData: function(){
         var deferred = Ext.create('Deft.Deferred');
-        var startDate = this.getStartDate() || Rally.util.DateTime.toIsoString
+        var startDate = this.getStartDate();
 
         var find = {
             _TypeHierarchy: {$in: ['Defect','HierarchicalRequirement']},
-            _ValidFrom: {$gte: this.getStartDate()},
+            _ValidFrom: {$gte: startDate},
             Project: this.getContext().getProject().ObjectID,
-            "_PreviousValues.ScheduleState": {$exists: true},
-            Children: null
+            Children: null,
+            limit: Infinity
         };
+        find[this.previousValuesStateField] = {$exists: true};
+    //    find[this.stateField] = this.completedStateValue;
 
-        var fetch = this.fetchList.concat([this.classificationField]);
+        var fetch = this.fetchList.concat([this.classificationField]).concat([this.previousValuesStateField, this.stateField]);
         var store = Ext.create('Rally.data.lookback.SnapshotStore',{
             fetch: fetch,
             limit: 'Infinity',
@@ -214,7 +270,9 @@ Ext.define("ts-kanban-team-summary", {
         });
 
         store.load({
+            scope: this,
             callback: function(records, operation, success){
+                this.logger.log('_fetchResolvedData', success, records.length, operation);
                 if (success) {
                     deferred.resolve(records);
                 } else {
@@ -226,7 +284,7 @@ Ext.define("ts-kanban-team-summary", {
     },
     _fetchCurrentData: function(){
         var deferred = Ext.create('Deft.Deferred');
-        var fetch = this.currentDataFetchList.concat([this.classificationField]);
+        var fetch = this.currentDataFetchList.concat([this.classificationField]).concat([this.stateField]);
         var store = Ext.create('Rally.data.wsapi.artifact.Store',{
             limit: 'Infinity',
             models: ['Defect','UserStory'],
@@ -235,13 +293,15 @@ Ext.define("ts-kanban-team-summary", {
                 project: this.getContext().getProjectRef()
             },
             filters: [{
-                property: 'ScheduleState',
-                value: 'In-Progress'
+                property: this.stateField,
+                value: this.inProgressStateValue
             }]
         });
 
         store.load({
+            scope: this,
             callback: function(records, operation, success){
+                this.logger.log('_fetchCurrentData', success, records.length, operation, fetch);
                 if (success) {
                     deferred.resolve(records);
                 } else {
@@ -262,27 +322,18 @@ Ext.define("ts-kanban-team-summary", {
 
         var cb = header.add({
             xtype: 'rallydatefield',
-            value: this.getDateInPast(),
             fieldLabel: 'Start from Date',
             itemId: 'df-start',
             labelAlign: 'right',
-            maxValue: this.getDateInPast(1),
-            value: Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays),
-            margin: this.defaultMargin,
-            stateId: this.getContext().getScopedStateId('ts-date'),
-            stateful: true
+            maxValue: new Date(),
+            value: Rally.technicalservices.Toolbox.getBeginningOfMonthAsDate(new Date()),
+            margin: this.defaultMargin
         });
         cb.on('change', function(){this._reloadSnapshots();}, this);
 
     },
-    getDateInPast: function(daysBack){
-        if (!daysBack){
-            daysBack = this.defaultDays;
-        }
-        return Rally.util.DateTime.add(new Date(), 'day', -daysBack);
-    },
     getStartDate: function(){
         this.logger.log('getStartDate',this.down('#df-start').getValue());
-            return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue()) || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
+        return Rally.util.DateTime.toIsoString(this.down('#df-start').getValue());// || Rally.util.DateTime.add(new Date(), 'day',-this.defaultDays);
     }
 });

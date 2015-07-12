@@ -3,7 +3,11 @@
  */
 Ext.define('Rally.technicalservices.Toolbox',{
     singleton: true,
-
+    getBeginningOfMonthAsDate: function(dateInMonth){
+        var year = dateInMonth.getFullYear();
+        var month = dateInMonth.getMonth();
+        return new Date(year,month,1,0,0,0,0);
+    },
     fetchAllowedValuesPrecedenceArray: function(fieldName){
         var deferred = Ext.create('Deft.Deferred');
 

@@ -18,10 +18,15 @@ Ext.define('Rally.technicalservices.chart.TeamMembers',{
             this.team = team;
         }
         this.removeAll();
-        this.setTitle(team);
-        var chartData = this.calculator.getTeamUsersChartData(this.team);
 
-        console.log('chartData', chartData);
+        if (!this.team){
+            return;
+        }
+
+        this.setTitle(this.team);
+        var chartData = this.calculator.getTeamUsersChartData(this.team);
+        var chartHeight = Math.max(Rally.getApp().getHeight() * .90, chartData.categories.length * 20);
+
         this.add({
             xtype: 'rallychart',
             itemId: 'team-members-chart',
@@ -31,10 +36,15 @@ Ext.define('Rally.technicalservices.chart.TeamMembers',{
             },
             chartConfig: {
                 chart: {
-                    type: 'bar'
+                    type: 'bar',
+                    height: chartHeight
+                },
+                legend: {
+                    verticalAlign: 'top',
+                    align: 'center'
                 },
                 title: {
-                    text: this.team,
+                    text: '',
                     align: 'center'
                 },
                 yAxis: {
@@ -58,7 +68,8 @@ Ext.define('Rally.technicalservices.chart.TeamMembers',{
                 }
             }
         });
-        this.setHeight(Rally.getApp().getHeight() * 95);
+
+        this.setHeight(chartHeight);
 
     }
 });
