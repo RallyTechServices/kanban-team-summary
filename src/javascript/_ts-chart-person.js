@@ -39,8 +39,7 @@ Ext.define('Rally.technicalservices.chart.Person',{
                 plotShadow: false
             },
             title: {
-                text: this.userLabel,
-                align: 'center'
+                text: ''
             },
             plotOptions: {
                 pie: {
@@ -57,7 +56,7 @@ Ext.define('Rally.technicalservices.chart.Person',{
                 series: chartData
             }
         });
-        this.setHeight(Rally.getApp().getHeight() * 95);
+        this.setHeight(Rally.getApp().getHeight() * .95);
 
 
     },

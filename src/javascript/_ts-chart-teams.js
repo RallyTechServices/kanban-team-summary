@@ -18,7 +18,7 @@ Ext.define('Rally.technicalservices.chart.Team',{
 
         this.removeAll();
         var chartData = this.calculator.getTeamChartData();
-
+        var chartHeight = Math.max(Rally.getApp().getHeight() * .95, chartData.categories.length * 20);
         this.add({
             xtype: 'rallychart',
             itemId: 'team-chart',
@@ -30,8 +30,12 @@ Ext.define('Rally.technicalservices.chart.Team',{
                 chart: {
                     type: 'bar'
                 },
+                legend: {
+                    verticalAlign: 'top',
+                    align: 'center'
+                },
                 title: {
-                    text: 'Team Summary',
+                    text: '',
                     align: 'center'
                 },
                 yAxis: {
@@ -58,7 +62,8 @@ Ext.define('Rally.technicalservices.chart.Team',{
             }
         }
         });
-        this.setHeight(Rally.getApp().getHeight() * 95);
+        this.setHeight(chartHeight);
+        this.setWidth(Rally.getApp().getWidth()*.95);
     }
 
 });

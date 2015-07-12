@@ -5,12 +5,14 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
     currentRecords: null,
     statePrecedence: null,
     completedStateValue: null,
+    inProgressStateValue: null,
     stateFieldName: null,
     previousValuesStateFieldName: null,
     teamHash: null,
     noOwnerText: 'No Owner',
     noClassificationText: 'None',
     classificationField: null,
+    userHash: null,
 
     constructor: function(config){
         Ext.apply(this,config);
@@ -133,21 +135,6 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
         });
 
         return [{ data: data}];
-
-        return [{
-            name: "Brands",
-            colorByPoint: true,
-            data: [{
-                name: "Microsoft Internet Explorer",
-                y: 56.33
-            },{
-                name: "Chrome",
-                y: 24.03
-            },{
-                name: "Firefox",
-                y: 10.38
-            }]
-        }];
     },
     processData: function(teamMembers){
 
@@ -158,11 +145,11 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
             previousValuesStateFieldName = this.previousValuesStateFieldName,
             ownerHash = {},
             noClassificationText = this.noClassificationText,
-            classificationField = this.classificationField;
+            classificationField = this.classificationField,
+            stateInProgressValue = this.inProgressStateValue;
 
         _.each(snaps_by_oid, function(snaps, oid){
             var closed = null,
-                classification = null,
                 owner = snaps[0].Owner || -1;
 
             _.each(snaps, function(snap){
@@ -191,7 +178,7 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
         });
 
         _.each(this.currentRecords, function(r){
-            if (r.get('ScheduleState') == 'In-Progress'){
+            if (r.get(stateFieldName) == stateInProgressValue){
                 var ownerKey = r.get('Owner') ? r.get('Owner').ObjectID : -1;
                 if (teamMembers == undefined || _.contains(teamMembers, ownerKey)){
                     if (!ownerHash[ownerKey]){
@@ -205,15 +192,17 @@ Ext.define('Rally.technicalservices.KanbanTeamSummaryCalculator',{
         return ownerHash;
     },
     getUserHash: function(){
-        var userHash = {};
-        _.each(this.currentRecords, function(r){
-            var owner = r.get('Owner');
-            if (owner){
-                userHash[owner.ObjectID] = owner;
-            }
-        });
-        userHash[-1] = this.noOwnerText;
-        return userHash;
+        if (this.userHash == null){
+            var userHash = {};
+            _.each(this.teamHash, function(user_objs){
+                _.each(user_objs, function(user_obj){
+                    userHash[user_obj.get('ObjectID')] = user_obj.getData();
+                });
+            });
+            userHash[-1] = this.noOwnerText;
+            this.userHash = userHash;
+        }
+        return this.userHash;
     }
 
 
